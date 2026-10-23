@@ -3,50 +3,82 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mis videos</title>
+<title>Mis videos - TV</title>
 <style>
-  body { margin: 0; padding: 16px; background: #14181f; color: #f2f4f8; font-family: "Trebuchet MS", Verdana, sans-serif; }
-  h2 { font-size: 18px; margin: 18px 0 8px; }
-  video { width: 100%; border-radius: 8px; background: #000; }
-  #transmitir { display: block; width: 100%; margin-top: 26px; padding: 16px; border: 0; border-radius: 10px; background: #4cc2ff; color: #06222f; font-size: 20px; font-family: inherit; }
+  html, body { margin: 0; height: 100%; background: #14181f; color: #f2f4f8; font-family: "Trebuchet MS", Verdana, sans-serif; }
+  #espera { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  #codigo { font-size: 120px; letter-spacing: 12px; color: #4cc2ff; margin: 10px 0; }
+  #estado { font-size: 24px; color: #9aa4b5; }
+  #visor { position: fixed; inset: 0; background: #000; display: none; }
+  #visor iframe { width: 100%; height: 100%; border: 0; }
 </style>
 </head>
 <body>
-<div id="lista"></div>
-<button id="transmitir" type="button">Transmitir</button>
+<div id="espera">
+  <div style="font-size:28px">Código de esta TV</div>
+  <div id="codigo">----</div>
+  <div id="estado">Conectando…</div>
+</div>
+<div id="visor"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
-  var VIDEOS = [
-    { titulo: "Video 1", id: "1rTvUl3tgvG4wHl3zWieRCDC4mZkILFu5" },
-    { titulo: "Video 2", id: "1i7keP_I_iKEb4OiUdXy_6S7Bl-krd8xB" }
-  ];
+  var LETRAS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  var codigo = null;
+  try { codigo = localStorage.getItem("codigoTV"); } catch (e) {}
 
-  function directo(id) {
-    return "https://drive.usercontent.google.com/download?id=" + id + "&export=download&confirm=t";
+  function nuevoCodigo() {
+    var c = "";
+    for (var i = 0; i < 4; i++) c += LETRAS.charAt(Math.floor(Math.random() * LETRAS.length));
+    return c;
   }
 
-  var actual = 0;
-  var lista = document.getElementById("lista");
+  function iniciar() {
+    if (!codigo) codigo = nuevoCodigo();
+    var peer = new Peer("movcast-" + codigo);
 
-  VIDEOS.forEach(function (v, i) {
-    var t = document.createElement("h2");
-    t.textContent = v.titulo;
-    var video = document.createElement("video");
-    video.controls = true;
-    video.setAttribute("playsinline", "");
-    video.preload = "metadata";
-    video.src = directo(v.id);
-    video.addEventListener("play", function () { actual = i; });
-    lista.appendChild(t);
-    lista.appendChild(video);
+    peer.on("open", function () {
+      try { localStorage.setItem("codigoTV", codigo); } catch (e) {}
+      document.getElementById("codigo").textContent = codigo;
+      document.getElementById("estado").textContent = "Esperando al teléfono";
+    });
+
+    peer.on("error", function (err) {
+      if (err.type === "unavailable-id") { codigo = nuevoCodigo(); iniciar(); }
+      else { document.getElementById("estado").textContent = "Sin conexión. Recarga la página."; }
+    });
+
+    peer.on("disconnected", function () { try { peer.reconnect(); } catch (e) {} });
+
+    peer.on("connection", function (conn) {
+      conn.on("data", function (msg) {
+        if (msg && msg.id) reproducir(msg.id);
+      });
+    });
+  }
+
+  function reproducir(id) {
+    var visor = document.getElementById("visor");
+    visor.innerHTML = "";
+    var f = document.createElement("iframe");
+    f.src = "https://drive.google.com/file/d/" + id + "/preview";
+    f.setAttribute("allow", "autoplay; fullscreen");
+    f.setAttribute("allowfullscreen", "");
+    visor.appendChild(f);
+    visor.style.display = "block";
+    document.getElementById("espera").style.display = "none";
+  }
+
+  // Botón Atrás del control: volver a la pantalla del código
+  document.addEventListener("keydown", function (e) {
+    if (e.keyCode === 27 || e.keyCode === 4) {
+      document.getElementById("visor").style.display = "none";
+      document.getElementById("visor").innerHTML = "";
+      document.getElementById("espera").style.display = "flex";
+    }
   });
 
-  // Abre el video elegido directamente en la app Web Video Caster
-  document.getElementById("transmitir").onclick = function () {
-    var url = directo(VIDEOS[actual].id).replace("https://", "");
-    location.href = "intent://" + url +
-      "#Intent;scheme=https;type=video/mp4;package=com.instantbits.cast.webvideo;end";
-  };
+  iniciar();
 </script>
 </body>
 </html>

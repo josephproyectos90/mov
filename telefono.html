@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mis videos</title>
+<style>
+  body { margin: 0; padding: 18px; background: #14181f; color: #f2f4f8; font-family: "Trebuchet MS", Verdana, sans-serif; }
+  .fila { display: flex; gap: 10px; margin-bottom: 18px; }
+  input { flex: 1; padding: 14px; font-size: 22px; text-transform: uppercase; border-radius: 10px; border: 2px solid #2d3646; background: #1f2530; color: #f2f4f8; font-family: inherit; }
+  button { padding: 14px 18px; font-size: 20px; border: 0; border-radius: 10px; background: #4cc2ff; color: #06222f; font-family: inherit; }
+  .video { display: block; width: 100%; margin-bottom: 12px; text-align: left; background: #1f2530; color: #f2f4f8; }
+  .video.activo { outline: 3px solid #4cc2ff; }
+  #estado { color: #9aa4b5; margin: 0 0 16px; min-height: 22px; }
+</style>
+</head>
+<body>
+<div class="fila">
+  <input id="codigo" maxlength="4" placeholder="Código de la TV" autocomplete="off">
+  <button id="conectar" type="button">Conectar</button>
+</div>
+<p id="estado"></p>
+<div id="lista"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+  var VIDEOS = [
+    { titulo: "Video 1", id: "1rTvUl3tgvG4wHl3zWieRCDC4mZkILFu5" },
+    { titulo: "Video 2", id: "1i7keP_I_iKEb4OiUdXy_6S7Bl-krd8xB" }
+  ];
+
+  var peer = new Peer();
+  var conn = null;
+  var estado = document.getElementById("estado");
+  var campo = document.getElementById("codigo");
+  var botones = [];
+
+  try { campo.value = localStorage.getItem("codigoTV") || ""; } catch (e) {}
+
+  function conectar() {
+    var c = campo.value.trim().toUpperCase();
+    if (c.length < 4) { estado.textContent = "Escribe el código que sale en la TV"; return; }
+    estado.textContent = "Conectando…";
+    if (conn) { try { conn.close(); } catch (e) {} }
+    conn = peer.connect("movcast-" + c, { reliable: true });
+    conn.on("open", function () {
+      estado.textContent = "Conectado a la TV";
+      try { localStorage.setItem("codigoTV", c); } catch (e) {}
+    });
+    conn.on("close", function () { estado.textContent = "Desconectado"; });
+    conn.on("error", function () { estado.textContent = "No se pudo conectar"; });
+    setTimeout(function () {
+      if (conn && !conn.open) estado.textContent = "No encuentro la TV. Revisa el código.";
+    }, 8000);
+  }
+
+  document.getElementById("conectar").onclick = conectar;
+
+  VIDEOS.forEach(function (v, i) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "video";
+    b.textContent = v.titulo;
+    b.onclick = function () {
+      if (!conn || !conn.open) { estado.textContent = "Primero conecta con la TV"; return; }
+      conn.send({ id: v.id });
+      botones.forEach(function (x) { x.className = "video"; });
+      b.className = "video activo";
+      estado.textContent = "Reproduciendo en la TV";
+    };
+    document.getElementById("lista").appendChild(b);
+    botones.push(b);
+  });
+
+  peer.on("open", function () { if (campo.value.length === 4) conectar(); });
+</script>
+</body>
+</html>
