@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mis videos</title>
+<style>
+  :root {
+    --fondo: #14181f;
+    --panel: #1f2530;
+    --texto: #f2f4f8;
+    --suave: #9aa4b5;
+    --acento: #4cc2ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--fondo);
+    color: var(--texto);
+    font-family: "Trebuchet MS", Verdana, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  header { padding: 20px 32px 8px; }
+  h1 { margin: 0; font-size: 28px; }
+  #actual { color: var(--suave); margin: 4px 0 0; font-size: 18px; }
+  #lista {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 12px 32px;
+  }
+  .video-btn {
+    background: var(--panel);
+    color: var(--texto);
+    border: 3px solid transparent;
+    border-radius: 12px;
+    padding: 16px 26px;
+    font-size: 22px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .video-btn.activo { border-color: var(--acento); }
+  .video-btn:focus {
+    outline: none;
+    background: var(--acento);
+    color: #06222f;
+  }
+  #visor {
+    flex: 1;
+    margin: 8px 32px 12px;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 240px;
+  }
+  #visor iframe { width: 100%; height: 100%; border: 0; display: block; }
+  footer { padding: 0 32px 18px; }
+  footer a { color: var(--acento); font-size: 18px; }
+  footer a:focus { outline: 3px solid var(--acento); outline-offset: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mis videos</h1>
+  <p id="actual"></p>
+</header>
+
+<div id="lista"></div>
+
+<div id="visor"></div>
+
+<footer>
+  <a id="abrir" href="#" target="_blank" rel="noopener">Si no se reproduce, abrir en Google Drive</a>
+</footer>
+
+<script>
+  // Para agregar un video: copia su ID desde el enlace de Drive
+  // (lo que va entre /d/ y /view) y agrega una línea nueva.
+  var VIDEOS = [
+    { titulo: "Video 1", id: "1rTvUl3tgvG4wHl3zWieRCDC4mZkILFu5" },
+    { titulo: "Video 2", id: "1i7keP_I_iKEb4OiUdXy_6S7Bl-krd8xB" }
+  ];
+
+  var lista = document.getElementById("lista");
+  var visor = document.getElementById("visor");
+  var actual = document.getElementById("actual");
+  var abrir = document.getElementById("abrir");
+  var botones = [];
+
+  function reproducir(i) {
+    var v = VIDEOS[i];
+    visor.innerHTML = "";
+    var f = document.createElement("iframe");
+    f.src = "https://drive.google.com/file/d/" + v.id + "/preview";
+    f.setAttribute("allow", "autoplay; fullscreen");
+    f.setAttribute("allowfullscreen", "");
+    visor.appendChild(f);
+    actual.textContent = "Reproduciendo: " + v.titulo;
+    abrir.href = "https://drive.google.com/file/d/" + v.id + "/view";
+    for (var j = 0; j < botones.length; j++) {
+      botones[j].className = "video-btn" + (j === i ? " activo" : "");
+    }
+    try { localStorage.setItem("ultimoVideo", i); } catch (e) {}
+  }
+
+  VIDEOS.forEach(function (v, i) {
+    var b = document.createElement("button");
+    b.className = "video-btn";
+    b.textContent = v.titulo;
+    b.onclick = function () { reproducir(i); };
+    lista.appendChild(b);
+    botones.push(b);
+  });
+
+  var inicio = 0;
+  try {
+    var guardado = parseInt(localStorage.getItem("ultimoVideo"), 10);
+    if (guardado >= 0 && guardado < VIDEOS.length) inicio = guardado;
+  } catch (e) {}
+  reproducir(inicio);
+  botones[inicio].focus();
+</script>
+</body>
+</html>
