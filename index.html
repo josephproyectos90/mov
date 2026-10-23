@@ -10,7 +10,8 @@
   #codigo { font-size: 120px; letter-spacing: 12px; color: #4cc2ff; margin: 10px 0; }
   #estado { font-size: 24px; color: #9aa4b5; }
   #visor { position: fixed; inset: 0; background: #000; display: none; }
-  #visor iframe { width: 100%; height: 100%; border: 0; }
+  #visor iframe, #visor video { width: 100%; height: 100%; border: 0; background: #000; }
+  #aviso { position: fixed; left: 0; right: 0; bottom: 40px; text-align: center; font-size: 28px; display: none; }
 </style>
 </head>
 <body>
@@ -20,12 +21,15 @@
   <div id="estado">Conectando…</div>
 </div>
 <div id="visor"></div>
+<div id="aviso">Pulsa OK para reproducir</div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
   var LETRAS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   var codigo = null;
   try { codigo = localStorage.getItem("codigoTV"); } catch (e) {}
+  var llamada = null;
+  var videoEl = null;
 
   function nuevoCodigo() {
     var c = "";
@@ -50,32 +54,80 @@
 
     peer.on("disconnected", function () { try { peer.reconnect(); } catch (e) {} });
 
+    // Video de Drive
     peer.on("connection", function (conn) {
       conn.on("data", function (msg) {
-        if (msg && msg.id) reproducir(msg.id);
+        if (msg && msg.id) reproducirDrive(msg.id);
       });
+    });
+
+    // Video del teléfono (llega por transmisión, no se descarga)
+    peer.on("call", function (call) {
+      if (llamada) { try { llamada.close(); } catch (e) {} }
+      llamada = call;
+      call.answer();
+      call.on("stream", function (stream) { reproducirStream(stream); });
+      call.on("close", function () { volverAlCodigo(); });
     });
   }
 
-  function reproducir(id) {
+  function mostrarVisor() {
+    document.getElementById("visor").style.display = "block";
+    document.getElementById("espera").style.display = "none";
+  }
+
+  function reproducirDrive(id) {
     var visor = document.getElementById("visor");
     visor.innerHTML = "";
+    videoEl = null;
     var f = document.createElement("iframe");
     f.src = "https://drive.google.com/file/d/" + id + "/preview";
     f.setAttribute("allow", "autoplay; fullscreen");
     f.setAttribute("allowfullscreen", "");
     visor.appendChild(f);
-    visor.style.display = "block";
-    document.getElementById("espera").style.display = "none";
+    mostrarVisor();
   }
 
-  // Botón Atrás del control: volver a la pantalla del código
-  document.addEventListener("keydown", function (e) {
-    if (e.keyCode === 27 || e.keyCode === 4) {
-      document.getElementById("visor").style.display = "none";
-      document.getElementById("visor").innerHTML = "";
-      document.getElementById("espera").style.display = "flex";
+  function reproducirStream(stream) {
+    var visor = document.getElementById("visor");
+    visor.innerHTML = "";
+    var v = document.createElement("video");
+    v.setAttribute("playsinline", "");
+    v.autoplay = true;
+    v.srcObject = stream;
+    visor.appendChild(v);
+    videoEl = v;
+    mostrarVisor();
+    var p = v.play();
+    if (p && p.catch) {
+      p.catch(function () { document.getElementById("aviso").style.display = "block"; });
     }
+  }
+
+  function volverAlCodigo() {
+    var visor = document.getElementById("visor");
+    visor.style.display = "none";
+    visor.innerHTML = "";
+    videoEl = null;
+    document.getElementById("aviso").style.display = "none";
+    document.getElementById("espera").style.display = "flex";
+  }
+
+  document.addEventListener("keydown", function (e) {
+    // Atrás: volver al código
+    if (e.keyCode === 27 || e.keyCode === 4) {
+      if (llamada) { try { llamada.close(); } catch (x) {} llamada = null; }
+      volverAlCodigo();
+      return;
+    }
+    // OK: iniciar reproducción si el navegador la bloqueó
+    if ((e.keyCode === 13 || e.keyCode === 23) && videoEl) {
+      videoEl.play();
+      document.getElementById("aviso").style.display = "none";
+    }
+  });
+  document.addEventListener("click", function () {
+    if (videoEl) { videoEl.play(); document.getElementById("aviso").style.display = "none"; }
   });
 
   iniciar();

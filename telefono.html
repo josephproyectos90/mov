@@ -5,22 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mis videos</title>
 <style>
+  * { box-sizing: border-box; }
   body { margin: 0; padding: 18px; background: #14181f; color: #f2f4f8; font-family: "Trebuchet MS", Verdana, sans-serif; }
-  .fila { display: flex; gap: 10px; margin-bottom: 18px; }
-  input { flex: 1; padding: 14px; font-size: 22px; text-transform: uppercase; border-radius: 10px; border: 2px solid #2d3646; background: #1f2530; color: #f2f4f8; font-family: inherit; }
-  button { padding: 14px 18px; font-size: 20px; border: 0; border-radius: 10px; background: #4cc2ff; color: #06222f; font-family: inherit; }
-  .video { display: block; width: 100%; margin-bottom: 12px; text-align: left; background: #1f2530; color: #f2f4f8; }
+  .fila { display: flex; gap: 10px; margin-bottom: 14px; }
+  input[type=text] { flex: 1; min-width: 0; padding: 14px; font-size: 22px; text-transform: uppercase; border-radius: 10px; border: 2px solid #2d3646; background: #1f2530; color: #f2f4f8; font-family: inherit; }
+  button, label.boton { padding: 14px 18px; font-size: 20px; border: 0; border-radius: 10px; background: #4cc2ff; color: #06222f; font-family: inherit; display: block; text-align: center; }
+  .video { width: 100%; margin-bottom: 12px; text-align: left; background: #1f2530; color: #f2f4f8; }
   .video.activo { outline: 3px solid #4cc2ff; }
   #estado { color: #9aa4b5; margin: 0 0 16px; min-height: 22px; }
+  #local { width: 100%; margin-top: 12px; border-radius: 8px; background: #000; display: none; }
+  #archivo { display: none; }
+  hr { border: 0; border-top: 1px solid #2d3646; margin: 20px 0; }
 </style>
 </head>
 <body>
 <div class="fila">
-  <input id="codigo" maxlength="4" placeholder="Código de la TV" autocomplete="off">
+  <input id="codigo" type="text" maxlength="4" placeholder="Código de la TV" autocomplete="off">
   <button id="conectar" type="button">Conectar</button>
 </div>
 <p id="estado"></p>
+
 <div id="lista"></div>
+<hr>
+<label class="boton" for="archivo">Enviar video del teléfono</label>
+<input id="archivo" type="file" accept="video/*">
+<video id="local" controls playsinline></video>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
@@ -30,9 +39,13 @@
   ];
 
   var peer = new Peer();
+  var peerListo = false;
   var conn = null;
+  var llamada = null;
+  var codigoActual = "";
   var estado = document.getElementById("estado");
   var campo = document.getElementById("codigo");
+  var local = document.getElementById("local");
   var botones = [];
 
   try { campo.value = localStorage.getItem("codigoTV") || ""; } catch (e) {}
@@ -40,29 +53,37 @@
   function conectar() {
     var c = campo.value.trim().toUpperCase();
     if (c.length < 4) { estado.textContent = "Escribe el código que sale en la TV"; return; }
+    if (!peerListo) { estado.textContent = "Preparando conexión… intenta de nuevo"; return; }
+    codigoActual = c;
     estado.textContent = "Conectando…";
     if (conn) { try { conn.close(); } catch (e) {} }
     conn = peer.connect("movcast-" + c, { reliable: true });
+    var esta = conn;
     conn.on("open", function () {
       estado.textContent = "Conectado a la TV";
       try { localStorage.setItem("codigoTV", c); } catch (e) {}
     });
-    conn.on("close", function () { estado.textContent = "Desconectado"; });
+    conn.on("close", function () { if (conn === esta) estado.textContent = "Desconectado"; });
     conn.on("error", function () { estado.textContent = "No se pudo conectar"; });
     setTimeout(function () {
-      if (conn && !conn.open) estado.textContent = "No encuentro la TV. Revisa el código.";
-    }, 8000);
+      if (conn === esta && !esta.open) estado.textContent = "No encuentro la TV. Revisa el código.";
+    }, 10000);
   }
 
   document.getElementById("conectar").onclick = conectar;
+  campo.addEventListener("input", function () { if (campo.value.trim().length === 4) conectar(); });
+  peer.on("open", function () { peerListo = true; if (campo.value.trim().length === 4) conectar(); });
+  peer.on("error", function () { estado.textContent = "Error de conexión. Recarga la página."; });
 
-  VIDEOS.forEach(function (v, i) {
+  // Videos de Drive
+  VIDEOS.forEach(function (v) {
     var b = document.createElement("button");
     b.type = "button";
     b.className = "video";
     b.textContent = v.titulo;
     b.onclick = function () {
       if (!conn || !conn.open) { estado.textContent = "Primero conecta con la TV"; return; }
+      if (llamada) { try { llamada.close(); } catch (e) {} llamada = null; }
       conn.send({ id: v.id });
       botones.forEach(function (x) { x.className = "video"; });
       b.className = "video activo";
@@ -72,7 +93,28 @@
     botones.push(b);
   });
 
-  peer.on("open", function () { if (campo.value.length === 4) conectar(); });
+  // Video del teléfono: se transmite en vivo, no se guarda en la TV
+  document.getElementById("archivo").onchange = function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    if (!conn || !conn.open) { estado.textContent = "Primero conecta con la TV"; return; }
+    if (llamada) { try { llamada.close(); } catch (e) {} llamada = null; }
+    botones.forEach(function (x) { x.className = "video"; });
+
+    local.style.display = "block";
+    local.src = URL.createObjectURL(f);
+    local.onerror = function () { estado.textContent = "Este formato no se puede reproducir en el teléfono"; };
+
+    local.onplaying = function () {
+      if (llamada) return;
+      var stream = local.captureStream ? local.captureStream() : (local.mozCaptureStream ? local.mozCaptureStream() : null);
+      if (!stream) { estado.textContent = "Tu navegador no permite transmitir este video"; return; }
+      llamada = peer.call("movcast-" + codigoActual, stream);
+      llamada.on("close", function () { estado.textContent = "Transmisión terminada"; });
+      estado.textContent = "Transmitiendo a la TV. Mantén esta pantalla abierta.";
+    };
+    local.play().catch(function () {});
+  };
 </script>
 </body>
 </html>
